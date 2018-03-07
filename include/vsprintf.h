@@ -14,6 +14,16 @@
 ulong simple_strtoul(const char *cp, char **endp, unsigned int base);
 
 /**
+ * simple_strtoul_fixed_size - convert a string to a fixed size unsigned long
+ * @param cp	The string to be converted
+ * @param base	The number base to use
+ * @param endp	Pointer to the end of the unsigned long
+ * @param size	Maximum length of the string to consider
+ * @return the converted ulong number
+ */
+unsigned long simple_strtoul_fixed_size(const char *cp, char **endp,
+					unsigned int base, int size);
+/**
  * strict_strtoul - convert a string to an unsigned long strictly
  * @param cp	The string to be converted
  * @param base	The number base to use

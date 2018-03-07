@@ -30,6 +30,28 @@ static const char *_parse_integer_fixup_radix(const char *s, unsigned int *base)
 	return s;
 }
 
+unsigned long simple_strtoul_fixed_size(const char *cp, char **endp,
+				unsigned int base, int size)
+{
+	unsigned long result = 0;
+	unsigned long value;
+	int digits = 0;
+
+	cp = _parse_integer_fixup_radix(cp, &base);
+
+	while ((isxdigit(*cp) && (value = isdigit(*cp) ? *cp-'0' : (islower(*cp)
+	    ? toupper(*cp) : *cp)-'A'+10) < base) && digits < size) {
+		result = result*base + value;
+		cp++;
+		digits++;
+	}
+
+	if (endp)
+		*endp = (char *)cp;
+
+	return result;
+}
+
 unsigned long simple_strtoul(const char *cp, char **endp,
 				unsigned int base)
 {
