@@ -606,6 +606,10 @@ endif
 
 KBUILD_CFLAGS += $(call cc-option,-Wno-format-nonliteral)
 
+#ifdef CONFIG_BACKTRACE
+KBUILD_CFLAGS += -fno-omit-frame-pointer -fno-optimize-sibling-calls -mapcs-frame
+#endif
+
 # turn jbsr into jsr for m68k
 ifeq ($(ARCH),m68k)
 ifeq ($(findstring 3.4,$(shell $(CC) --version)),3.4)

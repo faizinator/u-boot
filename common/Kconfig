@@ -622,4 +622,11 @@ config UPDATE_TFTP_MSEC_MAX
 
 endmenu
 
+config KALLSYMS
+	bool "Build and access symbols"
+
+config BACKTRACE
+	bool "Support for printing function backtrace to the console"
+	depends on KALLSYMS
+
 source "common/spl/Kconfig"
