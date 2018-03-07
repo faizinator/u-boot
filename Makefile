@@ -1286,6 +1286,13 @@ quiet_cmd_u-boot__ ?= LD      $@
       $(PLATFORM_LIBS) -Map u-boot.map;                        \
       $(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
 
+quiet_cmd_u-boot_stage2__ ?= LD      $@
+      cmd_u-boot_stage2__ ?= $(LD) $(LDFLAGS) $(LDFLAGS_u-boot) -o $@ \
+      -T u-boot.lds $(u-boot-init)                             \
+      --start-group common/system_map.o $(u-boot-main) --end-group                 \
+      $(PLATFORM_LIBS) -Map u-boot.map;                        \
+      $(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
+
 quiet_cmd_smap = GEN     common/system_map.o
 cmd_smap = \
 	smap=`$(call SYSTEM_MAP,u-boot) | \
@@ -1297,7 +1304,7 @@ u-boot:	$(u-boot-init) $(u-boot-main) u-boot.lds FORCE
 	+$(call if_changed,u-boot__)
 ifeq ($(CONFIG_KALLSYMS),y)
 	$(call cmd,smap)
-	$(call cmd,u-boot__) common/system_map.o
+	$(call cmd,u-boot_stage2__) common/system_map.o
 endif
 
 ifeq ($(CONFIG_RISCV),y)
