@@ -461,6 +461,7 @@ static int sdhci_set_ios(struct mmc *mmc)
 #endif
 	u32 ctrl;
 	struct sdhci_host *host = mmc->priv;
+	int ret;
 
 	if (host->ops && host->ops->set_control_reg)
 		host->ops->set_control_reg(host);
@@ -500,8 +501,11 @@ static int sdhci_set_ios(struct mmc *mmc)
 	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
 
 	/* If available, call the driver specific "post" set_ios() function */
-	if (host->ops && host->ops->set_ios_post)
+	if (host->ops && host->ops->set_ios_post) {
 		host->ops->set_ios_post(host);
+		if (ret)
+			return ret;
+	}
 
 	return 0;
 }
