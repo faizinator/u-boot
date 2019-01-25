@@ -55,6 +55,11 @@
 
 #define CONFIG_SPL_MAX_SIZE		CONFIG_SYS_K3_MAX_DOWNLODABLE_IMAGE_SIZE
 
+#define PARTS_DEFAULT \
+	/* Linux partitions */ \
+	"uuid_disk=${uuid_gpt_disk};" \
+	"name=rootfs,start=0,size=-,uuid=${uuid_gpt_rootfs}\0"
+
 /* U-Boot general configuration */
 #define EXTRA_ENV_AM65X_BOARD_SETTINGS					\
 	"findfdt="							\
@@ -81,7 +86,8 @@
 	"init_mmc=run args_all args_mmc\0"				\
 	"get_fdt_mmc=load mmc ${bootpart} ${fdtaddr} ${bootdir}/${name_fdt}\0" \
 	"get_kern_mmc=load mmc ${bootpart} ${loadaddr} "		\
-		"${bootdir}/${name_kern}\0"
+		"${bootdir}/${name_kern}\0"				\
+	"partitions=" PARTS_DEFAULT "\0"
 
 /* Incorporate settings into the U-Boot environment */
 #define CONFIG_EXTRA_ENV_SETTINGS					\
