@@ -69,7 +69,6 @@ enum {
 struct cpsw_platform_data {
 	u32	mdio_base;
 	u32	cpsw_base;
-	u32	mac_id;
 	u32	gmii_sel;
 	int	mdio_div;
 	int	channels;	/* number of cpdma channels (symmetric)	*/
@@ -88,10 +87,12 @@ struct cpsw_platform_data {
 	bool	rmii_clock_external;
 	u8	version;
 	const char *phy_sel_compat;
+	u32 *addr;
 };
 
 int cpsw_register(struct cpsw_platform_data *data);
-int ti_cm_get_macid(struct udevice *dev, int slave, u8 *mac_addr);
+int ti_cm_get_macid_addr(struct udevice *dev, int slave, u32 *addr)
+int ti_cm_get_macid(struct udevice *dev, u8 *mac_addr);
 int cpsw_get_slave_phy_addr(struct udevice *dev, int slave);
 
 #endif /* _CPSW_H_  */
