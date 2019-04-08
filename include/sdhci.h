@@ -280,6 +280,8 @@ struct sdhci_host {
 	struct mmc *mmc;
 	const struct sdhci_ops *ops;
 	int index;
+	bool is_aligned;
+	int trans_bytes;
 
 	int bus_width;
 	struct gpio_desc pwr_gpio;	/* Power GPIO */

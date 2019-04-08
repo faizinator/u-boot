@@ -123,6 +123,63 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 	return 0;
 }
 
+static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_data *data)
+{
+	u32 mode;
+
+	sdhci_writeb(host, 0xe, SDHCI_TIMEOUT_CONTROL);
+
+	if (!data)
+		return;
+
+	mode = SDHCI_TRNS_BLK_CNT_EN;
+	int trans_bytes = data->blocks * data->blocksize;
+	host->trans_bytes = trans_bytes;
+	if (data->blocks > 1)
+		mode |= SDHCI_TRNS_MULTI;
+
+	if (data->flags == MMC_DATA_READ)
+		mode |= SDHCI_TRNS_READ;
+
+#ifdef CONFIG_MMC_SDHCI_SDMA
+	if (data->flags == MMC_DATA_READ)
+		start_addr = (dma_addr_t)data->dest;
+	else
+		start_addr = (dma_addr_t)data->src;
+
+	if ((host->quirks & SDHCI_QUIRK_32BIT_DMA_ADDR) &&
+			(start_addr & 0x7) != 0x0) {
+		host->is_aligned = 0;
+		start_addr = (unsigned long)aligned_buffer;
+		if (data->flags != MMC_DATA_READ)
+			memcpy(aligned_buffer, data->src, trans_bytes);
+	}
+
+#if defined(CONFIG_FIXED_SDHCI_ALIGNED_BUFFER)
+	/*
+	 * Always use this bounce-buffer when
+	 * CONFIG_FIXED_SDHCI_ALIGNED_BUFFER is defined
+	 */
+	host->is_aligned = 0;
+	start_addr = (unsigned long)aligned_buffer;
+	if (data->flags != MMC_DATA_READ)
+		memcpy(aligned_buffer, data->src, trans_bytes);
+#endif
+
+	sdhci_writel(host, start_addr, SDHCI_DMA_ADDRESS);
+	mode |= SDHCI_TRNS_DMA;
+#endif
+	sdhci_writew(host, SDHCI_MAKE_BLKSZ(SDHCI_DEFAULT_BOUNDARY_ARG,
+			data->blocksize),
+			SDHCI_BLOCK_SIZE);
+	sdhci_writew(host, data->blocks, SDHCI_BLOCK_COUNT);
+	sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
+#ifdef CONFIG_MMC_SDHCI_SDMA
+	trans_bytes = ALIGN(trans_bytes, CONFIG_SYS_CACHELINE_SIZE);
+	flush_cache(start_addr, trans_bytes);
+#endif
+}
+
 /*
  * No command will be sent by driver if card is busy, so driver must wait
  * for card ready state.
@@ -148,11 +205,13 @@ static int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	struct sdhci_host *host = mmc->priv;
 	unsigned int stat = 0;
 	int ret = 0;
-	int trans_bytes = 0, is_aligned = 1;
-	u32 mask, flags, mode;
+	u32 mask, flags;
 	unsigned int time = 0, start_addr = 0;
 	int mmc_dev = mmc_get_blk_desc(mmc)->devnum;
 	ulong start = get_timer(0);
+
+	host->is_aligned = 1;
+	host->trans_bytes = 0;
 
 	/* Timeout unit - ms */
 	static unsigned int cmd_timeout = SDHCI_CMD_DEFAULT_TIMEOUT;
@@ -208,60 +267,8 @@ static int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	    cmd->cmdidx == MMC_CMD_SEND_TUNING_BLOCK_HS200)
 		flags |= SDHCI_CMD_DATA;
 
-	/* Set Transfer mode regarding to data flag */
-	if (data) {
-		sdhci_writeb(host, 0xe, SDHCI_TIMEOUT_CONTROL);
-		mode = SDHCI_TRNS_BLK_CNT_EN;
-		trans_bytes = data->blocks * data->blocksize;
-		if (data->blocks > 1)
-			mode |= SDHCI_TRNS_MULTI;
-
-		if (data->flags == MMC_DATA_READ)
-			mode |= SDHCI_TRNS_READ;
-
-#ifdef CONFIG_MMC_SDHCI_SDMA
-		if (data->flags == MMC_DATA_READ)
-			start_addr = (unsigned long)data->dest;
-		else
-			start_addr = (unsigned long)data->src;
-		if ((host->quirks & SDHCI_QUIRK_32BIT_DMA_ADDR) &&
-				(start_addr & 0x7) != 0x0) {
-			is_aligned = 0;
-			start_addr = (unsigned long)aligned_buffer;
-			if (data->flags != MMC_DATA_READ)
-				memcpy(aligned_buffer, data->src, trans_bytes);
-		}
-
-#if defined(CONFIG_FIXED_SDHCI_ALIGNED_BUFFER)
-		/*
-		 * Always use this bounce-buffer when
-		 * CONFIG_FIXED_SDHCI_ALIGNED_BUFFER is defined
-		 */
-		is_aligned = 0;
-		start_addr = (unsigned long)aligned_buffer;
-		if (data->flags != MMC_DATA_READ)
-			memcpy(aligned_buffer, data->src, trans_bytes);
-#endif
-
-		sdhci_writel(host, start_addr, SDHCI_DMA_ADDRESS);
-		mode |= SDHCI_TRNS_DMA;
-#endif
-		sdhci_writew(host, SDHCI_MAKE_BLKSZ(SDHCI_DEFAULT_BOUNDARY_ARG,
-				data->blocksize),
-				SDHCI_BLOCK_SIZE);
-		sdhci_writew(host, data->blocks, SDHCI_BLOCK_COUNT);
-		sdhci_writew(host, mode, SDHCI_TRANSFER_MODE);
-	} else if (cmd->resp_type & MMC_RSP_BUSY) {
-		sdhci_writeb(host, 0xe, SDHCI_TIMEOUT_CONTROL);
-	}
-
 	sdhci_writel(host, cmd->cmdarg, SDHCI_ARGUMENT);
-#ifdef CONFIG_MMC_SDHCI_SDMA
-	if (data) {
-		trans_bytes = ALIGN(trans_bytes, CONFIG_SYS_CACHELINE_SIZE);
-		flush_cache(start_addr, trans_bytes);
-	}
-#endif
+	sdhci_prepare_data(host, data);
 	sdhci_writew(host, SDHCI_MAKE_CMD(cmd->cmdidx, flags), SDHCI_COMMAND);
 	start = get_timer(0);
 	do {
@@ -296,8 +303,8 @@ static int sdhci_send_command(struct mmc *mmc, struct mmc_cmd *cmd,
 	sdhci_writel(host, SDHCI_INT_ALL_MASK, SDHCI_INT_STATUS);
 	if (!ret) {
 		if ((host->quirks & SDHCI_QUIRK_32BIT_DMA_ADDR) &&
-				!is_aligned && (data->flags == MMC_DATA_READ))
-			memcpy(data->dest, aligned_buffer, trans_bytes);
+				!host->is_aligned && (data->flags == MMC_DATA_READ))
+			memcpy(data->dest, aligned_buffer, host->trans_bytes);
 		return 0;
 	}
 
