@@ -77,6 +77,12 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 	unsigned char ctrl;
 	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
 	ctrl &= ~SDHCI_CTRL_DMA_MASK;
+#ifdef CONFIG_MMC_SDHCI_ADMA
+	if(host->64_bit_adma)
+		ctrl |= SDHCI_CTRL_ADMA64;
+	else
+		ctrl |= SDHCI_CTRL_ADMA32;
+#endif
 	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
 #endif
 
@@ -88,6 +94,8 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 		if (stat & SDHCI_INT_ERROR) {
 			pr_debug("%s: Error detected in status(0x%X)!\n",
 				 __func__, stat);
+			if (stat & SDHCI_INT_ADMA_ERROR)
+				sdhci_adma_cleanup(host);
 			return -EIO;
 		}
 		if (!transfer_done && (stat & rdy)) {
@@ -123,9 +131,63 @@ static int sdhci_transfer_data(struct sdhci_host *host, struct mmc_data *data,
 	return 0;
 }
 
+static void sdhci_adma_desc(struct sdhci_host *host, char *buf, u16 len, bool end)
+{
+	struct sdhci_adma_desc *desc;
+	u8 attr;
+
+	desc = &host->adma_desc_table[host->desc_slot];
+
+	attr = ADMA_DESC_ATTR_VALID | ADMA_DESC_TRANSFER_DATA;
+	if (!end)
+		host->slot++;
+	else
+		attr |= ADMA_DESC_ATTR_END;
+
+	desc->len = len;
+	desc->addr = buf;
+	desc->reserved = 0;
+	desc->attr = attr;
+}
+
+static void sdhci_prepare_adma_table(struct sdhci_host *host, struct mmc_data *data)
+{
+	int total_len = host->trans_bytes;
+	uint desc_count = DIV_ROUND_UP(total_len, ADMA_MAX_LEN);
+	dma_addr_t start_addr;
+	dma_addr_t *buf;
+	uint i = desc;
+
+	host->adam_desc_table = (struct sdhci_adma_desc *)
+				memalign(ARCH_DMA_MINALIGN, desc_count *
+				sizeof(struct sdhci_adma_desc));
+
+	if (data->flags == MMC_DATA_READ)
+		start_addr = (dma_addr_t)data->dest;
+	else
+		start_addr = (dma_addr_t)data->src;
+
+	while (--i) {
+		sdhci_adma_desc(host, buf, ADMA_MAX_LEN, false);
+		buf += ADMA_MAX_LEN;
+		total_len -= ADMA_MAX_LEN;
+	}
+
+	sdhci_adma_desc(host, buf, ADMA_MAX_LEN, true);
+
+	flush_dcache_range((long)priv->adma_desc_table,
+			   (long)priv->adma_desc_table + ROUND(desc_count *
+			   sizeof(struct sdhci_adma_desc,
+			   ARCH_DMA_MINALIGN));
+}
+
+static void sdhci_adma_cleanup(struct sdhci_host *host)
+{
+	kfree(host->adma_desc_table);
+}
 static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_data *data)
 {
-	u32 mode;
+	u32 mode, start_addr;
 
 	sdhci_writeb(host, 0xe, SDHCI_TIMEOUT_CONTROL);
 
@@ -140,6 +202,20 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_data *data)
 
 	if (data->flags == MMC_DATA_READ)
 		mode |= SDHCI_TRNS_READ;
+
+#ifdef CONFIG_MMC_SDHCI_ADMA
+	sdhci_prepare_adma_table(host, data);
+	/* write to DMA_SELECT */
+
+	/* Write to adma register */
+	sdhci_writel(host, host->adma_desc_table, SDHCI_ADMA_ADDRESS);
+	if (host->64_bit_adma)
+		sdhci_writel(host, (u64) host->adma_desc_table >> 32,
+			     SDHCI_ADMA_ADDRESS_HI);
+
+	flush_dcache_range(buf, buf + ROUND(host->trans_bytes,
+					    ARCH_DMA_MINALIGN));
+#endif
 
 #ifdef CONFIG_MMC_SDHCI_SDMA
 	if (data->flags == MMC_DATA_READ)

@@ -202,6 +202,7 @@
 /* 55-57 reserved */
 
 #define SDHCI_ADMA_ADDRESS	0x58
+#define SDHCI_ADMA_ADDRESS_HI	0x5c
 
 /* 60-FB reserved */
 
@@ -268,6 +269,17 @@ struct sdhci_ops {
 	void (*set_delay)(struct sdhci_host *host);
 };
 
+#define ADMA_MAX_LEN	63488
+
+#ifdef CONFIG_MMC_SDHCI_AMDA
+struct sdhci_adma_desc {
+	u8 attr;
+	u8 reserved;
+	u16 len;
+	dma_addr_t addr;
+} __packed __aligned(4);
+#endif
+
 struct sdhci_host {
 	const char *name;
 	void *ioaddr;
@@ -290,6 +302,9 @@ struct sdhci_host {
 	uint	voltages;
 
 	struct mmc_config cfg;
+#ifdef CONFIG_MMC_SDHCI_ADMA
+	struct sdhci_adma_desc *adma_desc_table;
+#endif
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

@@ -373,6 +373,13 @@ config MMC_SDHCI_SDMA
 	  This enables support for the SDMA (Single Operation DMA) defined
 	  in the SD Host Controller Standard Specification Version 1.00 .
 
+config MMC_SDHCI_ADMA
+	bool "Support SDHCI ADMA"
+	depends on MMC_SDHCI
+	help
+	  This enables support for ADMA (Advanced Operation DMA) defined in the
+	  SD Host Controller Standard Specification Version 3.00.
+
 config MMC_SDHCI_ATMEL
 	bool "Atmel SDHCI controller support"
 	depends on ARCH_AT91
