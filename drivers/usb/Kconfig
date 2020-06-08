@@ -31,8 +31,6 @@ menuconfig USB
 	  in <file:Documentation/usb/> and especially the links given in
 	  <file:Documentation/usb/usb-help.txt>.
 
-if USB
-
 config DM_USB
 	bool "Enable driver model for USB"
 	depends on USB && DM
@@ -128,5 +126,3 @@ endif
 source "drivers/usb/gadget/Kconfig"
 
 source "drivers/usb/eth/Kconfig"
-
-endif
