@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <phys2bus.h>
+#include <power/regulator.h>
 
 static void sdhci_reset(struct sdhci_host *host, u8 mask)
 {
@@ -554,6 +555,54 @@ void sdhci_set_uhs_timing(struct sdhci_host *host)
 	}
 
 	sdhci_writew(host, reg, SDHCI_HOST_CONTROL2);
+}
+
+#if CONFIG_IS_ENABLED(MMC_IO_VOLTAGE)
+static void sdhci_set_voltage(struct sdhci_host *host)
+{
+	struct mmc *mmc = (struct mmc *)host->mmc;
+	u32 ctrl;
+
+	ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+
+	switch (mmc->signal_voltage) {
+	case MMC_SIGNAL_VOLTAGE_330:
+		if (mmc->vqmmc_supply) {
+			regulator_set_enable(mmc->vqmmc_supply, false);
+			regulator_set_value(mmc->vqmmc_supply, 3300000);
+			regulator_set_enable(mmc->vqmmc_supply, true);
+		}
+
+		mdelay(5);
+		if (IS_SD(mmc)) {
+			ctrl &= ~SDHCI_CTRL_VDD_180;
+			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+		}
+		break;
+	case MMC_SIGNAL_VOLTAGE_180:
+		if (mmc->vqmmc_supply) {
+			regulator_set_enable(mmc->vqmmc_supply, false);
+			regulator_set_value(mmc->vqmmc_supply, 1800000);
+			regulator_set_enable(mmc->vqmmc_supply, true);
+		}
+
+		if (IS_SD(mmc)) {
+			ctrl |= SDHCI_CTRL_VDD_180;
+			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+		}
+		break;
+	default:
+		/* No signal voltage switch required */
+		return;
+	}
+}
+#else
+static void sdhci_set_voltage(struct sdhci_host *host) { }
+#endif
+void sdhci_set_control_reg(struct sdhci_host *host)
+{
+	sdhci_set_voltage(host);
+	sdhci_set_uhs_timing(host);
 }
 
 #ifdef CONFIG_DM_MMC
